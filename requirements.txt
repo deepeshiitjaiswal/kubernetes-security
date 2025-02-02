@@ -1,0 +1,12 @@
+Flask==2.3.3
+flask-cors==4.0.0
+flask-jwt-extended==4.5.2
+flask-sqlalchemy==3.0.5
+kubernetes==27.2.0
+psycopg2-binary==2.9.7
+python-dotenv==0.13.0
+requests==2.31.0
+SQLAlchemy==2.0.20
+werkzeug==2.3.7
+bcrypt==4.0.1
+PyYAML==5.4.1
