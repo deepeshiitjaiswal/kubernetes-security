@@ -32,6 +32,8 @@ import {
   TableRow,
   Chip,
   Collapse,
+  LinearProgress,
+  Link
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import axios from 'axios';
@@ -61,18 +63,13 @@ const Item = styled(Paper)(({ theme }) => ({
 }));
 
 const getSeverityColor = (severity) => {
-  switch (severity.toUpperCase()) {
-    case 'CRITICAL':
-      return '#dc3545';
-    case 'HIGH':
-      return '#fd7e14';
-    case 'MEDIUM':
-      return '#ffc107';
-    case 'LOW':
-      return '#28a745';
-    default:
-      return '#6c757d';
-  }
+  const colors = {
+    'CRITICAL': '#dc3545',
+    'HIGH': '#fd7e14',
+    'MEDIUM': '#ffc107',
+    'LOW': '#28a745'
+  };
+  return colors[severity] || '#6c757d';
 };
 
 const Dashboard = () => {
@@ -80,49 +77,118 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [scanning, setScanning] = useState(false);
-  const [expandedCVE, setExpandedCVE] = useState(null);
   const navigate = useNavigate();
 
-  const fetchData = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setError('No authentication token found. Please login again.');
-        setLoading(false);
-        return;
-      }
-
-      const response = await axios.get('/api/scan/status', {
-        headers: {
-          'Authorization': `Bearer ${token}`
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const token = localStorage.getItem('token');
+        if (!token) {
+          setError('No authentication token found');
+          return;
         }
-      });
 
-      if (response.data) {
+        const response = await axios.get('/api/scan/status', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
         setScanData(response.data);
-        setError(null);
+        if (response.data.status === 'running') {
+          setScanning(true);
+        } else {
+          setScanning(false);
+        }
+      } catch (err) {
+        setError('Failed to fetch scan data: ' + (err.response?.data?.message || err.message));
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error('Error fetching scan data:', err);
-      setError(err.response?.data?.message || 'Error fetching scan data');
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+
+    fetchData();
+    // Poll for updates every second while scanning
+    const interval = setInterval(() => {
+      if (scanning) {
+        fetchData();
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [scanning]);
 
   const startScan = async () => {
     try {
-      setScanning(true);
       const token = localStorage.getItem('token');
-      await axios.post('/api/scan', {}, {
+      if (!token) {
+        setError('No authentication token found');
+        return;
+      }
+
+      setScanning(true);
+      setError(null);
+      setScanData(prev => ({
+        ...prev,
+        progress: 0,
+        message: 'Initializing scan...'
+      }));
+
+      // Start the scan
+      const scanResponse = await axios.post('/api/scan', {}, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
-      await fetchData();
+
+      if (scanResponse.data.status === 'success') {
+        // Poll for scan status
+        const pollInterval = setInterval(async () => {
+          try {
+            const statusResponse = await axios.get('/api/scan/status', {
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            });
+
+            const newData = statusResponse.data;
+            setScanData(prev => ({
+              ...prev,
+              ...newData,
+              progress: Math.max(prev?.progress || 0, newData.progress || 0)
+            }));
+
+            if (newData.status === 'completed') {
+              clearInterval(pollInterval);
+              setScanning(false);
+            } else if (newData.status === 'error') {
+              clearInterval(pollInterval);
+              setScanning(false);
+              setError('Scan failed: ' + newData.message);
+            }
+          } catch (err) {
+            clearInterval(pollInterval);
+            setScanning(false);
+            setError('Error checking scan status: ' + (err.response?.data?.message || err.message));
+          }
+        }, 1000); // Poll every second for smoother updates
+
+        // Clean up interval after 5 minutes (timeout)
+        setTimeout(() => {
+          clearInterval(pollInterval);
+          if (scanning) {
+            setScanning(false);
+            setError('Scan timed out after 5 minutes');
+          }
+        }, 300000);
+      } else {
+        setError('Failed to start scan: ' + scanResponse.data.message);
+        setScanning(false);
+      }
     } catch (err) {
+      console.error('Scan error:', err);
       setError('Failed to start scan: ' + (err.response?.data?.message || err.message));
-    } finally {
       setScanning(false);
     }
   };
@@ -132,44 +198,29 @@ const Dashboard = () => {
     navigate('/login');
   };
 
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
   const vulnerabilityData = {
     labels: ['Critical', 'High', 'Medium', 'Low'],
     datasets: [{
       data: [
-        scanData?.latest_scan?.vulnerabilities?.CRITICAL?.length || 0,
-        scanData?.latest_scan?.vulnerabilities?.HIGH?.length || 0,
-        scanData?.latest_scan?.vulnerabilities?.MEDIUM?.length || 0,
-        scanData?.latest_scan?.vulnerabilities?.LOW?.length || 0
+        scanData?.vulnerability_stats?.by_severity?.CRITICAL || 0,
+        scanData?.vulnerability_stats?.by_severity?.HIGH || 0,
+        scanData?.vulnerability_stats?.by_severity?.MEDIUM || 0,
+        scanData?.vulnerability_stats?.by_severity?.LOW || 0
       ],
       backgroundColor: ['#dc3545', '#fd7e14', '#ffc107', '#28a745'],
+      hoverBackgroundColor: ['#c82333', '#e96b02', '#e0a800', '#218838']
     }]
   };
 
   const podSecurityData = {
-    labels: ['Secure', 'Vulnerable', 'Unknown'],
+    labels: ['Secure', 'Vulnerable'],
     datasets: [{
       data: [
-        scanData?.latest_scan?.pods?.filter(pod => pod.vulnerabilities.length === 0)?.length || 0,
-        scanData?.latest_scan?.pods?.filter(pod => pod.vulnerabilities.length > 0)?.length || 0,
-        0
+        scanData?.pod_stats?.secure || 0,
+        scanData?.pod_stats?.vulnerable || 0
       ],
-      backgroundColor: ['#28a745', '#dc3545', '#6c757d'],
-    }]
-  };
-
-  const timelineData = {
-    labels: scanData?.latest_scan?.pods?.map((_, index) => `Scan ${index + 1}`) || [],
-    datasets: [{
-      label: 'Vulnerabilities',
-      data: scanData?.latest_scan?.pods?.map(pod => pod.vulnerabilities.length) || [],
-      borderColor: '#2196f3',
-      tension: 0.1
+      backgroundColor: ['#28a745', '#dc3545'],
+      hoverBackgroundColor: ['#218838', '#c82333']
     }]
   };
 
@@ -207,153 +258,182 @@ const Dashboard = () => {
         </Toolbar>
       </AppBar>
 
-      <Box sx={{ p: 3 }}>
-        <Grid container spacing={3}>
+      {/* Scan Progress Section */}
+      {scanning && (
+        <Box sx={{ width: '100%', p: 3 }}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" gutterBottom>
+              Scan Progress
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+              <Box sx={{ width: '100%', mr: 1 }}>
+                <LinearProgress 
+                  variant="determinate" 
+                  value={scanData?.progress || 0}
+                  sx={{
+                    height: 10,
+                    borderRadius: 5,
+                    backgroundColor: '#e0e0e0',
+                    '& .MuiLinearProgress-bar': {
+                      borderRadius: 5,
+                      backgroundColor: '#2196f3',
+                      transition: 'transform 0.3s ease'
+                    }
+                  }}
+                />
+              </Box>
+              <Box sx={{ minWidth: 60 }}>
+                <Typography variant="body2" color="text.secondary">
+                  {`${Math.round(scanData?.progress || 0)}%`}
+                </Typography>
+              </Box>
+            </Box>
+            <Typography variant="body2" color="text.secondary">
+              {scanData?.message || 'Scanning in progress...'}
+            </Typography>
+          </Paper>
+        </Box>
+      )}
+
+      {/* Error Alert */}
+      {error && (
+        <Box sx={{ p: 3 }}>
+          <Alert severity="error" onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        </Box>
+      )}
+
+      {/* Dashboard Content */}
+      {scanData?.latest_scan && (
+        <Box sx={{ p: 3 }}>
           {/* Summary Cards */}
-          <Grid item xs={12} md={3}>
-            <Item>
-              <Typography variant="h6">Total Vulnerabilities</Typography>
-              <Typography variant="h4" color="error">
-                {Object.values(scanData?.latest_scan?.vulnerabilities || {}).reduce((acc, curr) => acc + (curr?.length || 0), 0)}
-              </Typography>
-            </Item>
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <Item>
-              <Typography variant="h6">Critical Issues</Typography>
-              <Typography variant="h4" color="error">
-                {scanData?.latest_scan?.vulnerabilities?.CRITICAL?.length || 0}
-              </Typography>
-            </Item>
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <Item>
-              <Typography variant="h6">Pods Scanned</Typography>
-              <Typography variant="h4">
-                {scanData?.latest_scan?.pods?.length || 0}
-              </Typography>
-            </Item>
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <Item>
-              <Typography variant="h6">Scan Status</Typography>
-              <Typography variant="h4" color={scanData?.status === 'completed' ? 'success' : 'warning'}>
-                {scanData?.status || 'Unknown'}
-              </Typography>
-            </Item>
+          <Grid container spacing={3} sx={{ mb: 3 }}>
+            <Grid item xs={12} sm={6} md={3}>
+              <Paper sx={{ p: 2, textAlign: 'center' }}>
+                <Typography variant="h6" gutterBottom>
+                  Total Pods
+                </Typography>
+                <Typography variant="h4">
+                  {scanData.pod_stats?.total || 0}
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#dc3545', color: 'white' }}>
+                <Typography variant="h6" gutterBottom>
+                  Vulnerable Pods
+                </Typography>
+                <Typography variant="h4">
+                  {scanData.pod_stats?.vulnerable || 0}
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#28a745', color: 'white' }}>
+                <Typography variant="h6" gutterBottom>
+                  Secure Pods
+                </Typography>
+                <Typography variant="h4">
+                  {scanData.pod_stats?.secure || 0}
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Paper sx={{ p: 2, textAlign: 'center' }}>
+                <Typography variant="h6" gutterBottom>
+                  Total CVEs
+                </Typography>
+                <Typography variant="h4">
+                  {scanData.vulnerability_stats?.total || 0}
+                </Typography>
+              </Paper>
+            </Grid>
           </Grid>
 
           {/* Charts */}
-          <Grid item xs={12} md={6}>
-            <Item>
-              <Typography variant="h6">Vulnerability Distribution</Typography>
-              <Box sx={{ height: 300 }}>
-                <Doughnut data={vulnerabilityData} options={{ maintainAspectRatio: false }} />
-              </Box>
-            </Item>
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <Item>
-              <Typography variant="h6">Pod Security Status</Typography>
-              <Box sx={{ height: 300 }}>
-                <Doughnut data={podSecurityData} options={{ maintainAspectRatio: false }} />
-              </Box>
-            </Item>
-          </Grid>
-          <Grid item xs={12}>
-            <Item>
-              <Typography variant="h6">Vulnerability Trend</Typography>
-              <Box sx={{ height: 300 }}>
-                <Line data={timelineData} options={{ maintainAspectRatio: false }} />
-              </Box>
-            </Item>
+          <Grid container spacing={3} sx={{ mb: 3 }}>
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  Vulnerabilities by Severity
+                </Typography>
+                <Box sx={{ height: 300 }}>
+                  <Doughnut data={vulnerabilityData} options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: {
+                        position: 'right'
+                      }
+                    }
+                  }} />
+                </Box>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  Pod Security Status
+                </Typography>
+                <Box sx={{ height: 300 }}>
+                  <Doughnut data={podSecurityData} options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: {
+                        position: 'right'
+                      }
+                    }
+                  }} />
+                </Box>
+              </Paper>
+            </Grid>
           </Grid>
 
-          {/* CVE List */}
-          <Grid item xs={12}>
-            <TableContainer component={Paper}>
+          {/* CVE Table */}
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" gutterBottom>
+              Detected CVEs
+            </Typography>
+            <TableContainer>
               <Table>
                 <TableHead>
                   <TableRow>
                     <TableCell>CVE ID</TableCell>
                     <TableCell>Severity</TableCell>
-                    <TableCell>Affected Components</TableCell>
                     <TableCell>Description</TableCell>
-                    <TableCell>Actions</TableCell>
+                    <TableCell>Affected Pods</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {scanData?.latest_scan?.cves?.map((cve) => (
-                    <React.Fragment key={cve.id}>
-                      <TableRow>
-                        <TableCell>{cve.id}</TableCell>
-                        <TableCell>
-                          <Chip
-                            label={cve.severity}
-                            sx={{
-                              bgcolor: getSeverityColor(cve.severity),
-                              color: 'white'
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell>{cve.affected_components.join(', ')}</TableCell>
-                        <TableCell>{cve.description}</TableCell>
-                        <TableCell>
-                          <IconButton
-                            size="small"
-                            onClick={() => setExpandedCVE(expandedCVE === cve.id ? null : cve.id)}
-                          >
-                            {expandedCVE === cve.id ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={5}>
-                          <Collapse in={expandedCVE === cve.id} timeout="auto" unmountOnExit>
-                            <Box sx={{ margin: 1 }}>
-                              <Typography variant="h6" gutterBottom component="div">
-                                Details
-                              </Typography>
-                              <Table size="small">
-                                <TableBody>
-                                  <TableRow>
-                                    <TableCell component="th" scope="row">Attack Vector</TableCell>
-                                    <TableCell>{cve.attack_vector}</TableCell>
-                                  </TableRow>
-                                  <TableRow>
-                                    <TableCell component="th" scope="row">Fix Version</TableCell>
-                                    <TableCell>{cve.fix_version}</TableCell>
-                                  </TableRow>
-                                  <TableRow>
-                                    <TableCell component="th" scope="row">Mitigation</TableCell>
-                                    <TableCell>{cve.mitigation}</TableCell>
-                                  </TableRow>
-                                  <TableRow>
-                                    <TableCell component="th" scope="row">Published Date</TableCell>
-                                    <TableCell>{new Date(cve.published_date).toLocaleDateString()}</TableCell>
-                                  </TableRow>
-                                  <TableRow>
-                                    <TableCell component="th" scope="row">Reference</TableCell>
-                                    <TableCell>
-                                      <a href={cve.link} target="_blank" rel="noopener noreferrer">
-                                        View on NVD
-                                      </a>
-                                    </TableCell>
-                                  </TableRow>
-                                </TableBody>
-                              </Table>
-                            </Box>
-                          </Collapse>
-                        </TableCell>
-                      </TableRow>
-                    </React.Fragment>
+                  {scanData.latest_scan.cves.map((cve) => (
+                    <TableRow key={cve.id}>
+                      <TableCell>{cve.id}</TableCell>
+                      <TableCell>
+                        <Chip 
+                          label={cve.severity}
+                          sx={{ 
+                            bgcolor: getSeverityColor(cve.severity),
+                            color: 'white'
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell>{cve.description}</TableCell>
+                      <TableCell>
+                        {scanData.latest_scan.pods
+                          .filter(pod => pod.vulnerabilities?.some(v => v.cves?.includes(cve.id)))
+                          .map(pod => pod.name)
+                          .join(', ')}
+                      </TableCell>
+                    </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </TableContainer>
-          </Grid>
-        </Grid>
-      </Box>
+          </Paper>
+        </Box>
+      )}
     </Box>
   );
 };
