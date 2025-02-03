@@ -1,20 +1,15 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
+import { ThemeProvider, createTheme } from '@mui/material';
 import CssBaseline from '@mui/material/CssBaseline';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
-import api from './services/api';
+import ClusterMonitoring from './components/ClusterMonitoring';
+import ResourceMonitoring from './components/ResourceMonitoring';
 
 const theme = createTheme({
   palette: {
     mode: 'light',
-    primary: {
-      main: '#2196f3',
-    },
-    secondary: {
-      main: '#f50057',
-    },
   },
 });
 
@@ -23,7 +18,7 @@ const PrivateRoute = ({ children }) => {
   return token ? children : <Navigate to="/login" />;
 };
 
-const App = () => {
+function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -38,12 +33,28 @@ const App = () => {
               </PrivateRoute>
             }
           />
+          <Route
+            path="/monitoring"
+            element={
+              <PrivateRoute>
+                <ClusterMonitoring />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/resources"
+            element={
+              <PrivateRoute>
+                <ResourceMonitoring />
+              </PrivateRoute>
+            }
+          />
           <Route path="/" element={<Navigate to="/dashboard" />} />
           <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>
       </Router>
     </ThemeProvider>
   );
-};
+}
 
 export default App;

@@ -6,7 +6,9 @@ import logging
 import threading
 from models import db, User, ScanResult
 from kubernetes_scanner import KubernetesScanner
+from cluster_monitor import ClusterMonitor
 from error_handler import KubernetesError
+from resource_monitor import ResourceMonitor
 import os
 import json
 from dotenv import load_dotenv
@@ -41,6 +43,11 @@ app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=1)
 # Initialize extensions
 jwt = JWTManager(app)
 db.init_app(app)
+
+# Initialize components
+scanner = KubernetesScanner()
+cluster_monitor = ClusterMonitor()
+resource_monitor = ResourceMonitor()
 
 # Create database tables and default user
 def init_db():
@@ -252,6 +259,28 @@ def get_scan_status():
             'message': str(e)
         }), 500
 
+@app.route('/api/cluster/metrics', methods=['GET'])
+@jwt_required()
+def get_cluster_metrics():
+    """Get real-time cluster metrics"""
+    try:
+        metrics = cluster_monitor.get_cluster_metrics()
+        if metrics:
+            return jsonify({
+                'status': 'success',
+                'data': metrics
+            }), 200
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': 'Failed to get cluster metrics'
+            }), 500
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
 @app.route('/api/resources', methods=['GET'])
 @jwt_required()
 def get_resources():
@@ -274,6 +303,32 @@ def get_resources():
         }), 200
     except Exception as e:
         logger.error(f"Error getting resources: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/resources/metrics', methods=['GET'])
+@jwt_required()
+def get_resource_metrics():
+    """Get real-time resource metrics"""
+    try:
+        logger.info("Fetching resource metrics...")
+        metrics = resource_monitor.get_metrics()
+        if metrics:
+            logger.info(f"Resource metrics fetched successfully: {metrics}")
+            return jsonify({
+                'status': 'success',
+                'data': metrics
+            }), 200
+        else:
+            logger.error("Failed to get resource metrics")
+            return jsonify({
+                'status': 'error',
+                'message': 'Failed to get resource metrics'
+            }), 500
+    except Exception as e:
+        logger.error(f"Error getting resource metrics: {str(e)}")
         return jsonify({
             'status': 'error',
             'message': str(e)

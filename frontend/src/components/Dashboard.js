@@ -1,5 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
+import {
+  Box,
+  AppBar,
+  Toolbar,
+  Typography,
+  Button,
+  Paper,
+  Grid,
+  CircularProgress,
+  TableContainer,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+  Chip
+} from '@mui/material';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -14,28 +31,12 @@ import {
 } from 'chart.js';
 import { Line, Doughnut } from 'react-chartjs-2';
 import {
-  Box,
-  Grid,
-  Paper,
-  Typography,
-  CircularProgress,
-  Alert,
-  Button,
-  AppBar,
-  Toolbar,
   IconButton,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Chip,
-  Collapse,
+  Alert,
   LinearProgress,
-  Link
+  Collapse,
+  styled
 } from '@mui/material';
-import { styled } from '@mui/material/styles';
 import axios from 'axios';
 import LogoutIcon from '@mui/icons-material/Logout';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -243,6 +244,22 @@ const Dashboard = () => {
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             Kubernetes Vulnerability Scanner
           </Typography>
+          <Button
+            color="inherit"
+            component={Link}
+            to="/monitoring"
+            sx={{ mr: 2 }}
+          >
+            Cluster Monitoring
+          </Button>
+          <Button
+            color="inherit"
+            component={Link}
+            to="/resources"
+            sx={{ mr: 2 }}
+          >
+            Resource Monitor
+          </Button>
           <Button
             color="inherit"
             startIcon={<RefreshIcon />}
