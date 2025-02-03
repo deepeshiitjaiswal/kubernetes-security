@@ -23,10 +23,10 @@ load_dotenv()
 # Initialize Flask app
 app = Flask(__name__)
 
-# Configure CORS
+# Updated CORS configuration: Allow requests from any origin for /api/* endpoints
 CORS(app, resources={
     r"/api/*": {
-        "origins": ["http://localhost:3000"],
+        "origins": "*",
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"]
     }
@@ -81,7 +81,10 @@ def login():
         
     try:
         data = request.get_json()
+        logger.info(f"Login attempt received: {data}")
+        
         if not data:
+            logger.error("No data provided in request")
             return jsonify({
                 'status': 'error',
                 'message': 'No data provided'
@@ -91,21 +94,25 @@ def login():
         password = data.get('password')
         
         if not email or not password:
+            logger.error(f"Missing credentials - email: {bool(email)}, password: {bool(password)}")
             return jsonify({
                 'status': 'error',
                 'message': 'Email and password are required'
             }), 400
         
         user = User.query.filter_by(email=email).first()
+        logger.info(f"User lookup result for {email}: {'Found' if user else 'Not found'}")
         
         if user and user.check_password(password):
             access_token = create_access_token(identity=user.id)
+            logger.info(f"Login successful for user: {email}")
             return jsonify({
                 'status': 'success',
                 'access_token': access_token,
                 'user': user.to_dict()
             }), 200
         else:
+            logger.warning(f"Login failed for email: {email}")
             return jsonify({
                 'status': 'error',
                 'message': 'Invalid email or password'
@@ -416,9 +423,6 @@ def verify_auth():
         }), 500
 
 if __name__ == '__main__':
-    # Enable CORS for all domains in production
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
-    
     # Get port from environment variable or use default
     port = int(os.environ.get('PORT', 5000))
     
