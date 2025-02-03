@@ -3,6 +3,16 @@
 A web-based dashboard for scanning and monitoring security vulnerabilities in your Kubernetes cluster.
 
 ## Features
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+for update password 
+curl -X POST http://localhost:5000/api/login -H 'Content-Type: application/json' -d '{"email":"test@example.com","password":"test123"}'
+
+#######################
+
+python3 -c "from app import app, db, User; app.app_context().push(); print(User.query.all())"
+
+python3 -c "from app import app, db, User; app.app_context().push(); user = User.query.first(); user.set_password('test123'); db.session.commit(); print('Password updated')"
 
 - User Authentication and Authorization
 - Real-time Vulnerability Scanning
