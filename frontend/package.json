@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Frontend for Kubernetes Vulnerability Scanner",
   "main": "src/index.js",
+  "proxy": "http://localhost:5000",
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
@@ -15,7 +16,9 @@
     "@mui/icons-material": "^5.16.14",
     "@mui/material": "^5.16.14",
     "axios": "^1.7.9",
+    "chart.js": "^4.4.7",
     "react": "^18.2.0",
+    "react-chartjs-2": "^5.3.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.29.0",
     "react-scripts": "5.0.1",
